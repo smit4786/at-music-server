@@ -87,9 +87,61 @@ export const searchTracks = async (req, res) => {
   }
 };
 
+export const loveTrack = async (req, res) => {
+  try {
+    const { artist, track } = req.body;
+    const { username } = req.body;
+
+    if (!artist || !track || !username) {
+      return res.status(400).json({
+        error: 'Missing required fields: artist, track, username',
+      });
+    }
+
+    // Get user's API key from decoded token context
+    // In production, store user data in database
+    const result = await LastFMService.loveTrack(
+      username,
+      artist,
+      track,
+      process.env.LASTFM_API_KEY
+    );
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const unloveTrack = async (req, res) => {
+  try {
+    const { artist, track } = req.body;
+    const { username } = req.body;
+
+    if (!artist || !track || !username) {
+      return res.status(400).json({
+        error: 'Missing required fields: artist, track, username',
+      });
+    }
+
+    const result = await LastFMService.unloveTrack(
+      username,
+      artist,
+      track,
+      process.env.LASTFM_API_KEY
+    );
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export default {
   getRecentTracks,
   getUserInfo,
   getTopArtists,
   searchTracks,
+  loveTrack,
+  unloveTrack,
 };

@@ -161,6 +161,60 @@ export class LastFMService {
       return false;
     }
   }
+
+  static async loveTrack(username, artist, track, apiKey) {
+    try {
+      const response = await lastfmClient.post('/', null, {
+        params: {
+          method: 'track.love',
+          artist,
+          track,
+          user: username,
+          api_key: apiKey,
+          format: 'json',
+        },
+      });
+
+      if (response.data.error) {
+        throw new Error(`Last.fm error: ${response.data.message}`);
+      }
+
+      // Invalidate cache for user's tracks
+      await cache.delete(`lastfm:tracks:${username}:*`);
+
+      return { success: true, message: 'Track loved successfully' };
+    } catch (error) {
+      console.error('LastFM loveTrack error:', error.message);
+      throw error;
+    }
+  }
+
+  static async unloveTrack(username, artist, track, apiKey) {
+    try {
+      const response = await lastfmClient.post('/', null, {
+        params: {
+          method: 'track.unlove',
+          artist,
+          track,
+          user: username,
+          api_key: apiKey,
+          format: 'json',
+        },
+      });
+
+      if (response.data.error) {
+        throw new Error(`Last.fm error: ${response.data.message}`);
+      }
+
+      // Invalidate cache for user's tracks
+      await cache.delete(`lastfm:tracks:${username}:*`);
+
+      return { success: true, message: 'Track unloved successfully' };
+    } catch (error) {
+      console.error('LastFM unloveTrack error:', error.message);
+      throw error;
+    }
+  }
 }
 
 export default LastFMService;
