@@ -14,17 +14,26 @@ export const initRedis = async () => {
     client = redis.createClient({
       url: config.redisUrl,
       password: config.redisPassword,
-      socket: { reconnectStrategy: (retries) => Math.min(retries * 50, 500) }
+      socket: { 
+        reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+        connectTimeout: 5000
+      }
     });
     
     client.on('error', (err) => console.error('Redis error:', err));
     client.on('connect', () => console.log('✓ Redis connected'));
     
     try {
-      await client.connect();
+      // Use Promise.race with timeout
+      await Promise.race([
+        client.connect(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Redis connection timeout')), 5000)
+        )
+      ]);
       console.log('✓ Redis connected');
     } catch (err) {
-      console.warn('⚠ Redis unavailable, continuing without cache');
+      console.warn('⚠ Redis unavailable, continuing without cache:', err.message);
       client = null;
     }
     return client;
