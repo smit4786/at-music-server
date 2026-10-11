@@ -18,6 +18,10 @@ export const config = {
   lastfmApiSecret: process.env.LASTFM_API_SECRET || '',
   lastfmApiUrl: 'https://ws.audioscrobbler.com/2.0',
 
+  // Spotify (client credentials flow)
+  spotifyClientId: process.env.SPOTIFY_CLIENT_ID || '',
+  spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET || '',
+
   // Apple Music (MusicKit developer token; user token passed per-request
   // via the Music-User-Token header, never stored server-side)
   appleMusicDeveloperToken: process.env.APPLE_MUSIC_DEVELOPER_TOKEN || '',
