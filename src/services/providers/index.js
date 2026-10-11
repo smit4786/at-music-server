@@ -1,5 +1,6 @@
 import { LastFmProvider } from './LastFmProvider.js';
 import { AppleMusicProvider } from './AppleMusicProvider.js';
+import { SpotifyProvider } from './SpotifyProvider.js';
 
 const registry = new Map();
 
@@ -21,3 +22,4 @@ export function listProviders() {
 // import here, and call registerProvider.
 registerProvider(new LastFmProvider());
 registerProvider(new AppleMusicProvider());
+registerProvider(new SpotifyProvider());
