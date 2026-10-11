@@ -42,6 +42,25 @@ export class LastFmProvider extends MusicProvider {
     return data.topartists?.artist || [];
   }
 
+  async getUserInfo(username) {
+    const cacheKey = `lastfm:user:${username}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return cached;
+    const data = await lastfmCall('user.getinfo', { user: username });
+    const user = data.user || {};
+    await cache.set(cacheKey, user, 3600);
+    return user;
+  }
+
+  async loveTrack(username, track, artist) {
+    // Requires authenticated session; placeholder for signed API calls.
+    throw new Error('loveTrack requires a signed Last.fm session (not yet implemented)');
+  }
+
+  async unloveTrack(username, track, artist) {
+    throw new Error('unloveTrack requires a signed Last.fm session (not yet implemented)');
+  }
+
   async lookupByIsrc() {
     // Last.fm has no ISRC lookup; cross-reference via Apple Music provider.
     return [];
