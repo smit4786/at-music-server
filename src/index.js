@@ -5,6 +5,7 @@ import { initRedis } from './config/redis.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 import authRoutes from './routes/auth.js';
 import tracksRoutes from './routes/tracks.js';
+import appleMusicRoutes from './routes/appleMusic.js';
 
 const app = express();
 
@@ -33,7 +34,8 @@ app.get('/api/version', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/tracks', tracksRoutes);
+app.use("/api/tracks", tracksRoutes);
+app.use("/api/apple-music", appleMusicRoutes);
 
 // 404 handler
 app.use((req, res) => {
