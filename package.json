@@ -9,7 +9,11 @@
     "dev": "nodemon src/index.js",
     "test": "jest"
   },
-  "keywords": ["music", "lastfm", "api"],
+  "keywords": [
+    "music",
+    "lastfm",
+    "api"
+  ],
   "author": "Justin Spencer Smith",
   "license": "MIT",
   "dependencies": {
@@ -20,7 +24,8 @@
     "bcryptjs": "^2.4.3",
     "redis": "^4.6.7",
     "axios": "^1.6.2",
-    "express-rate-limit": "^7.1.5"
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^8.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
