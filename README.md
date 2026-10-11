@@ -219,3 +219,35 @@ POST   /api/apple-music/library/playlists/:playlistId/tracks
 ### Configuration
 
 Set `APPLE_MUSIC_DEVELOPER_TOKEN` in `.env` (MusicKit developer token from the Apple Developer portal).
+
+## v1 Provider API (extensible)
+
+All music data sources implement the `MusicProvider` interface (`src/services/providers/MusicProvider.js`). Adding a new provider (Spotify, YouTube Music) means implementing four methods and registering in `src/services/providers/index.js` — routes never change.
+
+### Endpoints
+
+```
+GET    /api/v1/music/providers
+GET    /api/v1/music/search?provider=apple-music&term=...&limit=10
+GET    /api/v1/music/recent?provider=lastfm&username=...&limit=50
+GET    /api/v1/music/isrc/:isrc
+GET    /api/v1/music/library/tracks          (Music-User-Token header)
+GET    /api/v1/music/library/playlists       (Music-User-Token header)
+POST   /api/v1/music/library/playlists       (Music-User-Token header)
+POST   /api/v1/music/library/playlists/:playlistId/tracks
+```
+
+### Response format
+
+All v1 endpoints return a standardized envelope:
+
+```json
+{ "success": true, "data": [...] }
+{ "success": false, "error": { "message": "...", "code": "PROVIDER_ERROR" } }
+```
+
+### Security
+
+- Helmet sets secure HTTP headers on all responses.
+- Stack traces are never exposed in production error responses.
+- User tokens (Music-User-Token) are passed per-request via header, never stored server-side.
