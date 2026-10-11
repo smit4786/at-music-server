@@ -193,3 +193,29 @@ config/
 ## License
 
 MIT
+
+## Apple Music API
+
+New in this release: Apple Music catalog and library access via the MusicKit API.
+
+### Endpoints
+
+Catalog (no user token required):
+
+```
+GET    /api/apple-music/search?term=query&types=songs,albums,artists&limit=10
+GET    /api/apple-music/isrc/:isrc
+```
+
+Library (requires `Music-User-Token` header — the user's MusicKit token, never stored server-side):
+
+```
+GET    /api/apple-music/library/tracks
+GET    /api/apple-music/library/playlists
+POST   /api/apple-music/library/playlists
+POST   /api/apple-music/library/playlists/:playlistId/tracks
+```
+
+### Configuration
+
+Set `APPLE_MUSIC_DEVELOPER_TOKEN` in `.env` (MusicKit developer token from the Apple Developer portal).
