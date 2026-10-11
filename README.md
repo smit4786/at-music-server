@@ -4,25 +4,25 @@ Production-ready Node.js backend for @AT_Music iOS app.
 
 ## Features
 
-✅ **User Authentication**
+**User Authentication**
 - JWT-based authentication
 - User registration and login
 - Token management
 
-✅ **Last.fm Integration**
+**Last.fm Integration**
 - API proxy for secure credential handling
 - Recent tracks retrieval
 - User info fetching
 - Top artists statistics
 - Track search
 
-✅ **Performance**
+**Performance**
 - Redis caching (optional)
 - Rate limiting
 - Request throttling
 - Optimized queries
 
-✅ **Security**
+**Security**
 - CORS enabled
 - Rate limiting
 - Input validation
@@ -175,11 +175,11 @@ config/
 
 ## Performance Optimizations
 
-- ✅ Redis caching for track data
-- ✅ Rate limiting per IP
-- ✅ Request deduplication
-- ✅ Connection pooling
-- ✅ Error recovery
+- Redis caching for track data
+- Rate limiting per IP
+- Request deduplication
+- Connection pooling
+- Error recovery
 
 ## Future Enhancements
 
