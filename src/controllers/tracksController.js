@@ -1,20 +1,23 @@
-import LastFMService from '../services/lastfmService.js';
+import { getProvider } from '../services/providers/index.js';
+
+// Legacy controller — delegates to the LastFmProvider via the registry.
+// New integrations should use /api/v1/music/* instead.
+function lastfm() { return getProvider('lastfm'); }
 
 export const getRecentTracks = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const { username } = req.body;
-    
+
     if (!username) {
       return res.status(400).json({ error: 'Missing username parameter' });
     }
-    
-    const tracks = await LastFMService.getRecentTracks(
+
+    const tracks = await lastfm().getRecentTracks(
       username,
-      parseInt(page),
-      parseInt(limit)
+      { page: parseInt(page), limit: parseInt(limit) }
     );
-    
+
     res.json({
       tracks,
       page: parseInt(page),
@@ -28,13 +31,13 @@ export const getRecentTracks = async (req, res) => {
 export const getUserInfo = async (req, res) => {
   try {
     const { username } = req.body;
-    
+
     if (!username) {
       return res.status(400).json({ error: 'Missing username parameter' });
     }
-    
-    const userInfo = await LastFMService.getUserInfo(username);
-    
+
+    const userInfo = await lastfm().getUserInfo(username);
+
     res.json(userInfo);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -45,17 +48,16 @@ export const getTopArtists = async (req, res) => {
   try {
     const { username } = req.body;
     const { period = '7day', limit = 10 } = req.query;
-    
+
     if (!username) {
       return res.status(400).json({ error: 'Missing username parameter' });
     }
-    
-    const artists = await LastFMService.getTopArtists(
+
+    const artists = await lastfm().getTopArtists(
       username,
-      period,
-      parseInt(limit)
+      { period, limit: parseInt(limit) }
     );
-    
+
     res.json({
       artists,
       period,
@@ -70,16 +72,16 @@ export const searchTracks = async (req, res) => {
   try {
     const { query } = req.query;
     const { limit = 20 } = req.query;
-    
+
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
-    
-    const tracks = await LastFMService.searchTracks(query, parseInt(limit));
-    
+
+    const tracks = await lastfm().searchTracks(query, { limit: parseInt(limit) });
+
     res.json({
-      query,
       tracks,
+      query,
       limit: parseInt(limit),
     });
   } catch (error) {
@@ -89,24 +91,14 @@ export const searchTracks = async (req, res) => {
 
 export const loveTrack = async (req, res) => {
   try {
-    const { artist, track } = req.body;
     const { username } = req.body;
+    const { track, artist } = req.body;
 
-    if (!artist || !track || !username) {
-      return res.status(400).json({
-        error: 'Missing required fields: artist, track, username',
-      });
+    if (!username || !track || !artist) {
+      return res.status(400).json({ error: 'Missing username, track, or artist parameter' });
     }
 
-    // Get user's API key from decoded token context
-    // In production, store user data in database
-    const result = await LastFMService.loveTrack(
-      username,
-      artist,
-      track,
-      process.env.LASTFM_API_KEY
-    );
-
+    const result = await lastfm().loveTrack(username, track, artist);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -115,33 +107,16 @@ export const loveTrack = async (req, res) => {
 
 export const unloveTrack = async (req, res) => {
   try {
-    const { artist, track } = req.body;
     const { username } = req.body;
+    const { track, artist } = req.body;
 
-    if (!artist || !track || !username) {
-      return res.status(400).json({
-        error: 'Missing required fields: artist, track, username',
-      });
+    if (!username || !track || !artist) {
+      return res.status(400).json({ error: 'Missing username, track, or artist parameter' });
     }
 
-    const result = await LastFMService.unloveTrack(
-      username,
-      artist,
-      track,
-      process.env.LASTFM_API_KEY
-    );
-
+    const result = await lastfm().unloveTrack(username, track, artist);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-};
-
-export default {
-  getRecentTracks,
-  getUserInfo,
-  getTopArtists,
-  searchTracks,
-  loveTrack,
-  unloveTrack,
 };
