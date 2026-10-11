@@ -251,3 +251,16 @@ All v1 endpoints return a standardized envelope:
 - Helmet sets secure HTTP headers on all responses.
 - Stack traces are never exposed in production error responses.
 - User tokens (Music-User-Token) are passed per-request via header, never stored server-side.
+
+### Spotify provider
+
+Registered as `spotify` in the provider registry. Uses the client credentials flow (no user OAuth required for search and ISRC lookup).
+
+```
+GET /api/v1/music/search?provider=spotify&term=...&limit=10
+GET /api/v1/music/isrc/:isrc&provider=spotify
+```
+
+Configuration: set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` (from developer.spotify.com/dashboard).
+
+Note: recent-tracks and top-artists require user OAuth scopes (`user-read-recently-played`, `user-top-read`) and return empty arrays under client credentials.
