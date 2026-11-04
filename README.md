@@ -131,6 +131,42 @@ All playback routes are official surfaces of the respective services. The
 resolver never extracts streams from services that don't offer them and does
 not circumvent DRM or licensing controls.
 
+### Matching & alternates
+
+For a resolved track, the resolver actively looks for the **same recording**
+on the other services and returns the finds as `alternates` — each with its
+own `audio`, `playback`, and a `match` verdict. Discovery sources: Deezer
+public search (no auth), Spotify search and Apple Music catalog search (when
+those server credentials are configured), on top of the `crossLinks` URLs
+from song.link.
+
+Every candidate is scored by `scoreMatch` (`src/services/trackMatch.js`, a
+pure function) before it may attach:
+
+- **ISRC equality → confidence 1.0** (`verifiedBy: 'isrc'`). Conflicting
+  ISRCs cap the score at 0.6 — a different ISRC usually means a different
+  recording (e.g. a remaster).
+- Otherwise a **metadata** score: normalized title similarity (feat./version
+  suffixes stripped) + artist similarity + duration agreement (±2s full
+  credit, ±5s partial, unknown duration neutral). If the artist signal is
+  unavailable the score caps at 0.89 — a title alone cannot verify, because
+  karaoke and cover versions share titles.
+- **Thresholds:** ≥ 0.90 `verified` (audio/playback auto-attached);
+  0.70–0.89 `probable` (attached with `match.unverified: true`);
+  < 0.70 excluded and counted in `matchSummary.candidatesRejected`.
+  The ISRC cross-matched preview in the audio ladder carries the same
+  `match` stamp (1.0 / `isrc` by construction).
+
+**Fingerprint-grade confirmation (optional, off by default).** Metadata +
+ISRC matching is strong but not proof. For proof, configure a recognition
+service with your own keys — SoundHound offers no self-serve matching API;
+the working equivalents are **AudD** (`AUDD_API_TOKEN`) and **ACRCloud**
+(`ACRCLOUD_ACCESS_KEY` / `ACRCLOUD_ACCESS_SECRET` / `ACRCLOUD_HOST`). When
+configured and an audio URL is available to check, the resolver confirms the
+identity against the audio itself and stamps `identityVerification`
+(`verifiedBy: 'audd' | 'acrcloud'`). Without keys, `identityVerification`
+stays `null` and metadata + ISRC verification stands on its own.
+
 ```bash
 curl "http://localhost:3000/api/v1/music/resolve?url=https%3A%2F%2Fwww.deezer.com%2Ftrack%2F1109731" \
   -H "Authorization: Bearer <token>"

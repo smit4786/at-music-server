@@ -87,6 +87,7 @@ describe('resolveMusicLink — Spotify without a preview falls back via ISRC', (
     const r = await resolveMusicLink('https://open.spotify.com/track/BBB');
     expect(r.audio).toEqual({
       kind: 'preview', url: 'https://cdn/dz-preview-b.mp3', durationSec: 30, source: 'deezer', via: 'isrc-cross-match',
+      match: { confidence: 1, verifiedBy: 'isrc', basis: ['isrc'] },
     });
     expect(r.audioNote).toMatch(/ISRC/);
     // song.link failing must not fail the resolve:
@@ -185,6 +186,78 @@ describe('resolveMusicLink — Audius playback is a full stream', () => {
     expect(r.playback.method).toBe('stream');
     expect(r.playback.streamUrl).toContain('/v1/tracks/eYRWn/stream');
     expect(r.playback.requiresSubscription).toBe(false);
+  });
+});
+
+describe('resolveMusicLink — alternate-service discovery', () => {
+  test('finds the same recording on Deezer and verifies it by ISRC', async () => {
+    routeGet((url) => {
+      if (url.includes('api.spotify.com/v1/tracks/')) {
+        return {
+          name: 'Song C', artists: [{ name: 'Artist C' }],
+          album: { name: 'Album C', images: [] },
+          external_ids: { isrc: 'ISRC100' }, duration_ms: 201000,
+          preview_url: 'https://cdn/preview-c.mp3',
+          external_urls: { spotify: 'https://open.spotify.com/track/CCC' },
+        };
+      }
+      if (url.includes('api.deezer.com/search')) {
+        return {
+          data: [{
+            id: 777, title: 'Song C', artist: { name: 'Artist C' }, duration: 201,
+            preview: 'https://cdn/dz-c.mp3', link: 'https://www.deezer.com/track/777',
+          }],
+        };
+      }
+      if (url.includes('api.deezer.com/track/777')) {
+        return { isrc: 'ISRC100', title: 'Song C', artist: { name: 'Artist C' }, duration: 201 };
+      }
+      if (url.includes('api.song.link')) return { linksByPlatform: {}, entitiesByUniqueId: {} };
+      throw new Error(`unexpected GET ${url}`);
+    });
+
+    const r = await resolveMusicLink('https://open.spotify.com/track/CCC');
+    expect(r.alternates).toHaveLength(1);
+    const alt = r.alternates[0];
+    expect(alt.provider).toBe('deezer');
+    expect(alt.id).toBe('777');
+    expect(alt.audio).toEqual({
+      kind: 'preview', url: 'https://cdn/dz-c.mp3', durationSec: 30, source: 'deezer', via: 'alternate-search',
+    });
+    expect(alt.playback.method).toBe('embed');
+    expect(alt.match).toEqual({ confidence: 1, verifiedBy: 'isrc', basis: ['isrc'] });
+    expect(r.matchSummary.candidatesConsidered).toBeGreaterThanOrEqual(1);
+    expect(r.matchSummary.candidatesRejected).toBe(0);
+    // Recognition is off without owner keys:
+    expect(r.identityVerification).toBeNull();
+  });
+
+  test('non-matching candidates are excluded and counted as rejected', async () => {
+    routeGet((url) => {
+      if (url.includes('api.spotify.com/v1/tracks/')) {
+        return {
+          name: 'Song D', artists: [{ name: 'Artist D' }],
+          album: { name: 'Album D', images: [] },
+          external_ids: { isrc: 'ISRC101' }, duration_ms: 190000,
+          preview_url: 'https://cdn/preview-d.mp3',
+          external_urls: { spotify: 'https://open.spotify.com/track/DDD' },
+        };
+      }
+      if (url.includes('api.deezer.com/search')) {
+        return {
+          data: [{
+            id: 888, title: 'Completely Different', artist: { name: 'Someone Else' }, duration: 300,
+            preview: 'https://cdn/dz-x.mp3', link: 'https://www.deezer.com/track/888',
+          }],
+        };
+      }
+      if (url.includes('api.song.link')) return { linksByPlatform: {}, entitiesByUniqueId: {} };
+      throw new Error(`unexpected GET ${url}`);
+    });
+
+    const r = await resolveMusicLink('https://open.spotify.com/track/DDD');
+    expect(r.alternates).toEqual([]);
+    expect(r.matchSummary.candidatesRejected).toBe(1);
   });
 });
 

@@ -29,6 +29,14 @@ export const config = {
   // SoundCloud (optional client id — only needed for stream URLs in the
   // link resolver; oEmbed metadata works without it)
   soundcloudClientId: process.env.SOUNDCLOUD_CLIENT_ID || '',
+
+  // Audio recognition (OPTIONAL, off by default — owner-supplied keys for
+  // fingerprint-grade identity confirmation in the link resolver;
+  // metadata + ISRC matching works without them)
+  auddApiToken: process.env.AUDD_API_TOKEN || '',
+  acrcloudAccessKey: process.env.ACRCLOUD_ACCESS_KEY || '',
+  acrcloudAccessSecret: process.env.ACRCLOUD_ACCESS_SECRET || '',
+  acrcloudHost: process.env.ACRCLOUD_HOST || '',
   
   // Database (placeholder for future)
   dbUrl: process.env.DATABASE_URL || 'mongodb://localhost:27017/at-music',

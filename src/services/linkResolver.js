@@ -16,6 +16,8 @@
 import axios from 'axios';
 import config from '../config/config.js';
 import { parseMusicLink } from './linkParsers.js';
+import { scoreMatch } from './trackMatch.js';
+import { recognizeAudioUrl, recognitionConfigured } from './recognition.js';
 
 const TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36 AT-Music-LinkResolver/1.0';
@@ -239,11 +241,21 @@ function deezerTrackFields(r, t) {
   r.url = t.link || r.url;
 }
 
-async function deezerIsrcPreview(isrc) {
+async function deezerIsrcPreview(isrc, source) {
   try {
     const t = await get(`https://api.deezer.com/track/isrc:${encodeURIComponent(isrc)}`);
     if (t && !t.error && t.preview) {
-      return { kind: 'preview', url: t.preview, durationSec: 30, source: 'deezer', via: 'isrc-cross-match' };
+      // The lookup is BY isrc, so the match is 1.0/'isrc' by construction —
+      // but it goes through scoreMatch like every other match, and the
+      // stamp travels with the audio so clients can see why it's trusted.
+      const match = scoreMatch(source || { isrc }, {
+        name: t.title, artist: t.artist?.name, isrc: t.isrc || isrc,
+        durationMs: t.duration ? t.duration * 1000 : null,
+      });
+      return {
+        kind: 'preview', url: t.preview, durationSec: 30, source: 'deezer', via: 'isrc-cross-match',
+        match: { confidence: match.confidence, verifiedBy: match.verifiedBy, basis: match.basis },
+      };
     }
   } catch { /* ladder step is best-effort */ }
   return null;
@@ -465,6 +477,136 @@ async function fillCrossLinks(r, canonicalUrl) {
 }
 
 // ---------------------------------------------------------------------------
+// Alternate-service discovery — actively find the SAME recording on other
+// services and verify each candidate with trackMatch.scoreMatch.
+// Sources: Deezer public search (no auth), Spotify search (when server
+// credentials are configured), Apple Music catalog search (when a
+// developer token is configured). song.link URLs surface separately in
+// crossLinks; alternates are only services with a verified candidate.
+// ---------------------------------------------------------------------------
+async function findAlternates(r, parsed) {
+  const summary = { candidatesConsidered: 0, candidatesRejected: 0 };
+  r.matchSummary = summary;
+  if (!r.name || (parsed.type !== 'track' && parsed.type !== 'video')) return;
+
+  const source = { name: r.name, artist: r.artist, isrc: r.isrc, durationMs: r.durationMs };
+  const byProvider = new Map();
+
+  const consider = (provider, cand, audio, playback) => {
+    summary.candidatesConsidered += 1;
+    const m = scoreMatch(source, cand);
+    if (m.confidence < 0.7) { summary.candidatesRejected += 1; return; }
+    const match = { confidence: m.confidence, verifiedBy: m.verifiedBy, basis: m.basis };
+    if (m.confidence < 0.9) match.unverified = true;
+    const alt = { provider, id: cand.id, url: cand.url || null, audio, playback, match };
+    const existing = byProvider.get(provider);
+    if (!existing || alt.match.confidence > existing.match.confidence) byProvider.set(provider, alt);
+  };
+
+  const query = [r.artist, r.name].filter(Boolean).join(' ');
+
+  // Deezer public search (no auth).
+  if (parsed.provider !== 'deezer') {
+    try {
+      const data = await get(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=5`);
+      const cands = [];
+      for (const t of data?.data || []) {
+        cands.push({
+          id: String(t.id), name: t.title, artist: t.artist?.name, isrc: null,
+          durationMs: t.duration ? t.duration * 1000 : null, url: t.link,
+          preview: t.preview,
+        });
+      }
+      for (const c of cands) {
+        consider('deezer', c,
+          c.preview ? { kind: 'preview', url: c.preview, durationSec: 30, source: 'deezer', via: 'alternate-search' } : null,
+          { method: 'embed', embedUrl: `https://widget.deezer.com/widget/dark/track/${c.id}`, requiresSubscription: false });
+      }
+      // Strengthen the best Deezer candidate with its ISRC (search results
+      // don't carry one): one extra lookup, re-scored through scoreMatch.
+      const best = byProvider.get('deezer');
+      if (best && best.match.verifiedBy !== 'isrc') {
+        try {
+          const full = await get(`https://api.deezer.com/track/${best.id}`);
+          if (full && !full.error && full.isrc) {
+            const m = scoreMatch(source, {
+              name: full.title, artist: full.artist?.name, isrc: full.isrc,
+              durationMs: full.duration ? full.duration * 1000 : null,
+            });
+            if (m.confidence < 0.7) {
+              byProvider.delete('deezer');
+              summary.candidatesRejected += 1;
+            } else {
+              best.match = { confidence: m.confidence, verifiedBy: m.verifiedBy, basis: m.basis };
+              if (m.confidence < 0.9) best.match.unverified = true;
+            }
+          }
+        } catch { /* ISRC strengthening is best-effort */ }
+      }
+    } catch { /* discovery is best-effort */ }
+  }
+
+  // Spotify search (registered provider's API; needs server credentials).
+  if (parsed.provider !== 'spotify' && config.spotifyClientId && config.spotifyClientSecret) {
+    try {
+      const token = await spotifyAccessToken();
+      const data = await get(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=5`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      for (const t of data?.tracks?.items || []) {
+        consider('spotify', {
+          id: t.id, name: t.name, artist: (t.artists || []).map((a) => a.name).join(', '),
+          isrc: t.external_ids?.isrc, durationMs: t.duration_ms, url: t.external_urls?.spotify,
+        },
+        t.preview_url ? { kind: 'preview', url: t.preview_url, durationSec: 30, source: 'spotify', via: 'alternate-search' } : null,
+        { method: 'sdk', sdk: { service: 'spotify', trackId: t.id, uri: `spotify:track:${t.id}` }, requiresSubscription: true });
+      }
+    } catch { /* discovery is best-effort */ }
+  }
+
+  // Apple Music catalog search (needs developer token).
+  if (parsed.provider !== 'apple-music' && config.appleMusicDeveloperToken) {
+    try {
+      const storefront = parsed.storefront || 'us';
+      const data = await get(
+        `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(query)}&types=songs&limit=5`,
+        { headers: { Authorization: `Bearer ${config.appleMusicDeveloperToken}` } }
+      );
+      for (const s of data?.results?.songs?.data || []) {
+        const a = s.attributes || {};
+        consider('apple-music', {
+          id: s.id, name: a.name, artist: a.artistName, isrc: a.isrc,
+          durationMs: a.durationInMillis, url: a.url,
+        },
+        a.previews?.[0]?.url ? { kind: 'preview', url: a.previews[0].url, durationSec: 30, source: 'apple-music', via: 'alternate-search' } : null,
+        { method: 'sdk', sdk: { service: 'apple-music', trackId: s.id, storefront }, requiresSubscription: true });
+      }
+    } catch { /* discovery is best-effort */ }
+  }
+
+  r.alternates = [...byProvider.values()];
+}
+
+// Optional fingerprint-grade confirmation (AudD / ACRCloud) — only when
+// the owner configured keys AND an audio URL exists to check. Stamps
+// r.identityVerification; never fails the resolve.
+async function verifyIdentity(r) {
+  if (!recognitionConfigured()) return;
+  const audioUrl = r.audio?.url || r.alternates?.[0]?.audio?.url;
+  if (!audioUrl) return;
+  const rec = await recognizeAudioUrl(audioUrl);
+  if (!rec) return;
+  const m = scoreMatch({ name: r.name, artist: r.artist }, rec);
+  r.identityVerification = {
+    verifiedBy: rec.service,
+    confidence: m.confidence,
+    status: m.confidence >= 0.9 ? 'confirmed' : 'unconfirmed',
+    recognized: { title: rec.title, artist: rec.artist },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main entry
 // ---------------------------------------------------------------------------
 export async function resolveMusicLink(rawUrl) {
@@ -503,6 +645,9 @@ export async function resolveMusicLink(rawUrl) {
     playback: null,
     crossLinks: {},
     embedUrl: null,
+    alternates: [],
+    matchSummary: null,
+    identityVerification: null,
   };
   if (parsed.storefront) r.storefront = parsed.storefront;
   if (parsed.type === 'album' || parsed.type === 'playlist') r.trackCount = null;
@@ -541,7 +686,9 @@ export async function resolveMusicLink(rawUrl) {
 
   // Audio ladder step (b): ISRC cross-match to a Deezer preview.
   if (!r.audio && r.isrc) {
-    const preview = await deezerIsrcPreview(r.isrc);
+    const preview = await deezerIsrcPreview(r.isrc, {
+      name: r.name, artist: r.artist, isrc: r.isrc, durationMs: r.durationMs,
+    });
     if (preview) {
       r.audio = preview;
       r.audioNote = `No native audio from ${parsed.provider}; 30s preview cross-matched on Deezer by ISRC.`;
@@ -551,6 +698,10 @@ export async function resolveMusicLink(rawUrl) {
       r.audioNote = `${r.audioNote} No ISRC cross-match preview was found either.`;
     }
   }
+
+  // Alternate-service discovery + optional recognition confirmation.
+  await findAlternates(r, parsed);
+  await verifyIdentity(r);
 
   // If the ISRC step produced audio where playback had no route at all,
   // the playback floor becomes that audio.
