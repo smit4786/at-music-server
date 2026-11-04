@@ -68,3 +68,30 @@ It is a self-contained teaching module in four parts:
 
 Student exercise: add a ninth service end-to-end — parser case, resolver
 branch, playback route, tests — without touching the route handler.
+
+## Addendum — Listen-Along Rooms (curriculum module)
+
+`/api/v1/rooms` adds synchronous group listening on top of the resolver:
+the server owns queue + transport state, clients play from their own
+services. Three teaching threads:
+
+- **State machines** (`src/services/rooms.js`): the transport is a small
+  explicit machine — paused/playing × position base + start timestamp,
+  with play/pause/seek/skip/back transitions and lazy auto-advance when
+  a track's duration elapses. The store is a factory with an injectable
+  clock, so every transition is unit-tested against fake time with no
+  timers and no flakiness. Discussion: why position is stored as
+  (basePosition, startedAt) rather than ticked by a server interval.
+- **SSE vs WebSockets**: rooms push state with Server-Sent Events — a
+  one-way, text-based stream that rides ordinary HTTP, reconnects
+  natively in browsers, and needs no new dependency. The traffic here is
+  server→client state broadcasts; client→server actions are plain POSTs.
+  Exercise: name a feature that would genuinely require WebSockets'
+  bidirectional channel, and one that would not.
+- **Clock synchronization**: the server clock is the only authority.
+  State carries `serverTime` alongside `positionMs`; clients estimate
+  their offset and correct drift on every event rather than free-running
+  — the same problem NTP and multiplayer games solve, at room scale.
+  Per-member `yourSource` selection shows the payoff of normalized data:
+  one shared queue, a different playback pipe per listener, chosen from
+  data the resolver already produced.

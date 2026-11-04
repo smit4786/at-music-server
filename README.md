@@ -172,6 +172,42 @@ curl "http://localhost:3000/api/v1/music/resolve?url=https%3A%2F%2Fwww.deezer.co
   -H "Authorization: Bearer <token>"
 ```
 
+### Listen-Along Rooms (v1, Requires JWT Token)
+
+Band mates listen together, each on their own service. **The server
+conducts; it never serves audio.** It owns the queue and the transport
+clock; every client plays the current track from its *own* source — its
+service's SDK, embed, or preview — at the server-dictated position.
+
+```
+POST /api/v1/rooms                              Create a room (creator = host + first member)
+POST /api/v1/rooms/:id/join                     Join by 6-character code { preferredService? }
+GET  /api/v1/rooms/:id/state?service=deezer     State for the caller (registers/updates membership + preference)
+POST /api/v1/rooms/:id/queue                    { url } — any member; the link is resolved and the snapshot queued
+POST /api/v1/rooms/:id/control                  { action, positionMs? } — HOST ONLY: play | pause | seek | skip | back
+GET  /api/v1/rooms/:id/events?service=deezer    SSE: full state on connect + on every mutation, 25s heartbeats
+```
+
+**Sync model.** Position authority is the server clock: state carries
+`transport.positionMs` and `serverTime`, clients re-sync on every state
+event and correct local drift against `serverTime` instead of trusting
+their own playback clock. The transport auto-advances when a track's
+known duration elapses, carrying the remainder into the next track;
+tracks with unknown duration never auto-advance. Queue snapshots are the
+resolver's full output, so per-member routing needs no extra lookups.
+
+**Per-member source (`yourSource`).** The same room at the same moment
+plays through different pipes: `yourSource` is the current snapshot's
+alternate matching the member's `preferredService` when present, else
+the primary resolved route. `fallbackUsed: true` is the honesty flag —
+that member's best route is only a preview while others may be hearing
+the full track. Nothing is hidden: the flag ships in every state
+response.
+
+Rooms are in-memory and expire after 12h of inactivity (swept lazily).
+Host-only control returns `403 NOT_HOST`; queueing a link the resolver
+cannot handle passes through `400 UNSUPPORTED_LINK`.
+
 ## Request Examples
 
 ### Register
