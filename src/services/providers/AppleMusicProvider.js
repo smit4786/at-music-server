@@ -1,6 +1,6 @@
 import axios from 'axios';
-import config from '../config/config.js';
-import { cache } from '../config/redis.js';
+import config from '../../config/config.js';
+import { cache } from '../../config/redis.js';
 import { MusicProvider, normalizeTrack } from './MusicProvider.js';
 
 const appleMusicClient = axios.create({

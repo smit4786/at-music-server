@@ -25,6 +25,10 @@ export const config = {
   // Apple Music (MusicKit developer token; user token passed per-request
   // via the Music-User-Token header, never stored server-side)
   appleMusicDeveloperToken: process.env.APPLE_MUSIC_DEVELOPER_TOKEN || '',
+
+  // SoundCloud (optional client id — only needed for stream URLs in the
+  // link resolver; oEmbed metadata works without it)
+  soundcloudClientId: process.env.SOUNDCLOUD_CLIENT_ID || '',
   
   // Database (placeholder for future)
   dbUrl: process.env.DATABASE_URL || 'mongodb://localhost:27017/at-music',

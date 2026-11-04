@@ -61,3 +61,13 @@ app.use((err, req, res, next) => {
     },
   });
 });
+
+// Server startup — initRedis tolerates a missing/unreachable Redis
+// (in-memory fallback), so the server always proceeds to listen.
+const startServer = async () => {
+  await initRedis();
+  app.listen(config.port, () => {
+    console.log(`@AT_Music server listening on port ${config.port}`);
+  });
+};
+startServer();

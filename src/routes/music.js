@@ -3,6 +3,7 @@ import { getProvider, listProviders } from '../services/providers/index.js';
 import { AppleMusicProvider } from '../services/providers/AppleMusicProvider.js';
 import { authenticateUser } from '../middleware/auth.js';
 import { trackLimiter } from '../middleware/rateLimiter.js';
+import { resolveMusicLink } from '../services/linkResolver.js';
 
 const router = express.Router();
 
@@ -17,6 +18,22 @@ function fail(res, status, message, code = 'PROVIDER_ERROR') {
 
 // List available providers
 router.get('/providers', (req, res) => ok(res, listProviders()));
+
+// Universal link resolver — paste a link from any supported service,
+// get normalized metadata + playable audio where licensing allows it.
+// GET /api/v1/music/resolve?url=<link>
+router.get('/resolve', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return fail(res, 400, 'Missing url parameter', 'VALIDATION_ERROR');
+  try {
+    const data = await resolveMusicLink(url);
+    ok(res, data);
+  } catch (e) {
+    if (e.code === 'VALIDATION_ERROR') return fail(res, 400, e.message, 'VALIDATION_ERROR');
+    if (e.code === 'UNSUPPORTED_LINK') return fail(res, 400, e.message, 'UNSUPPORTED_LINK');
+    fail(res, 502, e.message, e.code || 'UPSTREAM_ERROR');
+  }
+});
 
 // Unified search across any registered provider
 // GET /api/v1/music/search?provider=apple-music&term=...&limit=10
