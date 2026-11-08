@@ -8,6 +8,7 @@ import authRoutes from './routes/auth.js';
 import tracksRoutes from './routes/tracks.js';
 import appleMusicRoutes from './routes/appleMusic.js';
 import musicRoutes from './routes/music.js';
+import roomsRoutes from './routes/rooms.js';
 
 const app = express();
 
@@ -44,6 +45,7 @@ app.use('/api/apple-music', appleMusicRoutes);
 
 // Routes (v1 — provider-abstracted)
 app.use('/api/v1/music', musicRoutes);
+app.use('/api/v1/rooms', roomsRoutes);
 
 // 404 handler
 app.use((req, res) => {
