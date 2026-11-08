@@ -78,6 +78,100 @@ GET    /api/tracks/top-artists?period=7day&limit=10
 GET    /api/tracks/search?query=artist_name
 ```
 
+### Universal Link Resolver (v1, Requires JWT Token)
+
+Paste a link from any supported music service; get back normalized metadata,
+the best audio this server can deliver directly, and the best route to the
+**full** track in a client app.
+
+```
+GET /api/v1/music/resolve?url=<link>
+```
+
+Supported links: Spotify (incl. `spotify:` URIs and `/intl-xx/` paths),
+Apple Music, SoundCloud, YouTube / YouTube Music, Deezer, Tidal, Bandcamp,
+Audius, and short links from those services (`spotify.link`,
+`on.soundcloud.com`, `deezer.page.link`, `link.deezer.com`) — redirects are
+followed and the final URL is re-parsed.
+
+Response `data` uses the standard track fields (`name`, `artist`, `album`,
+`isrc`, `url`, `image`, `durationMs`) plus:
+
+- `audio` — server-deliverable audio: `{ kind: 'full' | 'preview', url, durationSec, source, via }`
+  or `null`. Previews come from the source service when it offers one; when it
+  doesn't and an ISRC is known, a 30-second Deezer preview is cross-matched by
+  ISRC (`via: 'isrc-cross-match'`).
+- `audioNote` — when `audio` is null (or partial), exactly why.
+- `playback` — the best route to the **full track**, in priority order:
+  `stream` (direct full-audio URL) → `sdk` (full playback in the client under
+  the user's own subscription via the service's official SDK) → `embed`
+  (official embed player) → `preview` (the floor) → `none`.
+  Shape: `{ method, streamUrl?, embedUrl?, sdk?: { service, trackId, uri?, storefront? }, requiresSubscription }`.
+- `crossLinks` — the same item on other services, via the song.link API.
+  Best-effort: the keyless public endpoint currently answers
+  `401 PUBLIC_API_ACCESS_DEPRECATED`, so this is usually `{}` in practice.
+- `embedUrl` — the service's official embed player URL, when one exists.
+
+Errors: `400 VALIDATION_ERROR` (missing `url`), `400 UNSUPPORTED_LINK`
+(not a recognized music link), `502 UPSTREAM_ERROR` (the source service
+failed and nothing could be resolved).
+
+| Service | Server audio (`audio`) | Best full-track playback (`playback`) | Subscription required |
+|---|---|---|---|
+| Spotify | 30s preview (API, needs server credentials; none via oEmbed) | `sdk` — Spotify App Remote / Web Playback (`spotify:track:{id}`) | Yes (Premium) |
+| Apple Music | 30s preview (catalog API, needs developer token; otherwise parse-only) | `sdk` — MusicKit (`trackId` + `storefront`) | Yes (Apple Music) |
+| Deezer | 30s preview (public API, no auth) | `embed` — Deezer widget player | No |
+| SoundCloud | Full stream only with `SOUNDCLOUD_CLIENT_ID` configured; otherwise none | `embed` — SoundCloud widget (or `stream` when a stream URL resolves) | No |
+| YouTube / YT Music | None — licensed for embed playback only | `embed` — official YouTube player (`videoId`) | No |
+| Audius | **Full stream** (public discovery API) | `stream` — direct stream URL | No |
+| Tidal | None unless the page exposes `og:audio` | `embed` — Tidal embed player | No |
+| Bandcamp | Only when the page exposes `og:audio` | `embed` — Bandcamp embedded player (from `og:video`) | No |
+
+All playback routes are official surfaces of the respective services. The
+resolver never extracts streams from services that don't offer them and does
+not circumvent DRM or licensing controls.
+
+### Matching & alternates
+
+For a resolved track, the resolver actively looks for the **same recording**
+on the other services and returns the finds as `alternates` — each with its
+own `audio`, `playback`, and a `match` verdict. Discovery sources: Deezer
+public search (no auth), Spotify search and Apple Music catalog search (when
+those server credentials are configured), on top of the `crossLinks` URLs
+from song.link.
+
+Every candidate is scored by `scoreMatch` (`src/services/trackMatch.js`, a
+pure function) before it may attach:
+
+- **ISRC equality → confidence 1.0** (`verifiedBy: 'isrc'`). Conflicting
+  ISRCs cap the score at 0.6 — a different ISRC usually means a different
+  recording (e.g. a remaster).
+- Otherwise a **metadata** score: normalized title similarity (feat./version
+  suffixes stripped) + artist similarity + duration agreement (±2s full
+  credit, ±5s partial, unknown duration neutral). If the artist signal is
+  unavailable the score caps at 0.89 — a title alone cannot verify, because
+  karaoke and cover versions share titles.
+- **Thresholds:** ≥ 0.90 `verified` (audio/playback auto-attached);
+  0.70–0.89 `probable` (attached with `match.unverified: true`);
+  < 0.70 excluded and counted in `matchSummary.candidatesRejected`.
+  The ISRC cross-matched preview in the audio ladder carries the same
+  `match` stamp (1.0 / `isrc` by construction).
+
+**Fingerprint-grade confirmation (optional, off by default).** Metadata +
+ISRC matching is strong but not proof. For proof, configure a recognition
+service with your own keys — SoundHound offers no self-serve matching API;
+the working equivalents are **AudD** (`AUDD_API_TOKEN`) and **ACRCloud**
+(`ACRCLOUD_ACCESS_KEY` / `ACRCLOUD_ACCESS_SECRET` / `ACRCLOUD_HOST`). When
+configured and an audio URL is available to check, the resolver confirms the
+identity against the audio itself and stamps `identityVerification`
+(`verifiedBy: 'audd' | 'acrcloud'`). Without keys, `identityVerification`
+stays `null` and metadata + ISRC verification stands on its own.
+
+```bash
+curl "http://localhost:3000/api/v1/music/resolve?url=https%3A%2F%2Fwww.deezer.com%2Ftrack%2F1109731" \
+  -H "Authorization: Bearer <token>"
+```
+
 ## Request Examples
 
 ### Register

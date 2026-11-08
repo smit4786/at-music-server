@@ -41,3 +41,30 @@ Music-data pipelines are a core Academy technical thread: real APIs, real authen
 - The server holds third-party API credentials. It is not a public demo endpoint — access requires JWT authentication.
 - Apple Music user tokens are passed per-request and never stored server-side.
 - Adding a new consumer (website widget, student project, third-party app) needs his approval.
+
+## Addendum — Universal Link Resolver (curriculum module)
+
+`GET /api/v1/music/resolve?url=<link>` (JWT-gated) turns a link from any
+major music service into normalized metadata plus playable audio routes.
+It is a self-contained teaching module in four parts:
+
+- **URL parsing as a pure function** (`src/services/linkParsers.js`): no
+  network, fully unit-tested. Every service encodes identity differently —
+  Spotify URIs and locale prefixes, Apple Music's `?i=` track-in-album,
+  SoundCloud's slug paths, Bandcamp's artist subdomains, short-link hosts
+  that must be followed before they can be parsed at all.
+- **Redirect handling**: short links are followed (bounded: 5 redirects,
+  8s timeout) and the *final* URL is re-parsed — parse, don't guess.
+- **ISRC as identity** (`src/services/linkResolver.js`): when the source
+  service offers no audio, the track's ISRC finds the same recording on
+  Deezer and borrows its preview. Identity first, audio second.
+- **Graceful degradation as a contract**: every response carries either
+  audio or an `audioNote` explaining its absence, and a `playback` block
+  naming the best *official* route to the full track (direct stream →
+  client SDK under the user's own subscription → official embed →
+  preview floor). Cross-service links (song.link) enrich when available
+  and silently degrade when not — enrichment must never be a single
+  point of failure.
+
+Student exercise: add a ninth service end-to-end — parser case, resolver
+branch, playback route, tests — without touching the route handler.
